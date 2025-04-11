@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Function Plot</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .slider-label {
+            width: 120px;
+        }
+        .slider-value {
+            width: 50px;
+            margin-left: 10px;
+        }
+        input[type="range"] {
+            width: 300px;
+        }
+        input[type="number"] {
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .plot {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .axis path,
+        .axis line {
+            stroke: #ccc;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .function-line {
+            fill: none;
+            stroke: steelblue;
+            stroke-width: 2;
+        }
+        .point-marker {
+            fill: red;
+            stroke: white;
+            stroke-width: 1;
+        }
+        .axis-line {
+            stroke: #999;
+            stroke-dasharray: 4,4;
+            stroke-width: 1;
+        }
+        .point-label {
+            font-size: 12px;
+            font-weight: bold;
+        }
+        button {
+            padding: 8px 12px;
+            margin-right: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #e0e0e0;
+        }
+        .coordinate-display {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Interactive Function Plot: y = (1-(1-x)^N<sub>GS</sub>)^N<sub>GS</sub></h1>
+        
+        <div class="controls">
+            <div class="slider-container">
+                <span class="slider-label">N<sub>GS</sub> value:</span>
+                <input type="range" id="m-slider" min="0.1" max="1000" step="0.1" value="10">
+                <span class="slider-value" id="m-value">10.0</span>
+                <input type="number" id="m-input" min="0.1" max="100891344545564193334812497256" step="0.1" value="10.0" style="width: 90px; margin-left: 15px;">
+            </div>
+            
+            <button id="reset-zoom">Reset Zoom</button>
+            <button id="toggle-grid">Toggle Grid</button>
+        </div>
+        
+        <div class="plot" id="plot"></div>
+        
+        <div class="coordinate-display" id="coordinates"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            width: 700,
+            height: 400,
+            margin: { top: 20, right: 30, bottom: 50, left: 60 },
+            initialXDomain: [0, 1],
+            initialYDomain: [0, 1],
+            points: 1000,
+            m: 10.0,
+            showGrid: true
+        };
+
+        // Calculate width and height of the plot area
+        const plotWidth = config.width - config.margin.left - config.margin.right;
+        const plotHeight = config.height - config.margin.top - config.margin.bottom;
+
+        // Function to calculate y = (1-(1-x)^m)^m
+        function calculateY(x, m) {
+            // Handle edge cases to avoid NaN
+            if (x <= 0) return 0;
+            if (x >= 1) return 1;
+            
+            // Handle very large values of m to avoid numerical issues
+            if (m > 1000000) {
+                // For extremely large m, the function approaches a step function
+                if (x < 0.5) return 0;
+                if (x > 0.5) return 1;
+                return 0.5;
+            }
+            
+            try {
+                return Math.pow(1 - Math.pow(1 - x, m), m);
+            } catch (e) {
+                console.error("Error calculating function value:", e);
+                return 0;
+            }
+        }
+
+        // Generate data points
+        function generateData(xDomain, m, points) {
+            const data = [];
+            const step = (xDomain[1] - xDomain[0]) / (points - 1);
+            
+            for (let i = 0; i < points; i++) {
+                const x = xDomain[0] + i * step;
+                const y = calculateY(x, m);
+                data.push({ x, y });
+            }
+            
+            return data;
+        }
+
+        // Create SVG
+        const svg = d3.select("#plot")
+            .append("svg")
+            .attr("width", config.width)
+            .attr("height", config.height);
+
+        // Create plot area with margins
+        const plot = svg.append("g")
+            .attr("transform", `translate(${config.margin.left}, ${config.margin.top})`);
+
+        // Create scales
+        const xScale = d3.scaleLinear()
+            .domain(config.initialXDomain)
+            .range([0, plotWidth]);
+
+        const yScale = d3.scaleLinear()
+            .domain(config.initialYDomain)
+            .range([plotHeight, 0]);
+
+        // Create axes
+        const xAxis = d3.axisBottom(xScale);
+        const yAxis = d3.axisLeft(yScale);
+
+        // Add axes to the plot
+        const xAxisGroup = plot.append("g")
+            .attr("class", "axis x-axis")
+            .attr("transform", `translate(0, ${plotHeight})`)
+            .call(xAxis);
+
+        const yAxisGroup = plot.append("g")
+            .attr("class", "axis y-axis")
+            .call(yAxis);
+
+        // Add axis labels
+        svg.append("text")
+            .attr("class", "x-axis-label")
+            .attr("text-anchor", "middle")
+            .attr("x", config.margin.left + plotWidth / 2)
+            .attr("y", config.height - 10)
+            .text("x");
+
+        svg.append("text")
+            .attr("class", "y-axis-label")
+            .attr("text-anchor", "middle")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -(config.margin.top + plotHeight / 2))
+            .attr("y", 15)
+            .text("y");
+
+        // Create a group for the grid lines
+        const gridGroup = plot.append("g")
+            .attr("class", "grid");
+
+        // Create line generator
+        const line = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y));
+
+        // Add path for the function
+        const path = plot.append("path")
+            .attr("class", "function-line");
+            
+        // Add group for point markers and axis lines
+        const markerGroup = plot.append("g")
+            .attr("class", "markers");
+            
+        // Add point marker (initially hidden)
+        const pointMarker = markerGroup.append("circle")
+            .attr("class", "point-marker")
+            .attr("r", 5)
+            .style("opacity", 0);
+            
+        // Add axis lines (initially hidden)
+        const xAxisLine = markerGroup.append("line")
+            .attr("class", "axis-line")
+            .style("opacity", 0);
+            
+        const yAxisLine = markerGroup.append("line")
+            .attr("class", "axis-line")
+            .style("opacity", 0);
+            
+        // Add point label (initially hidden)
+        const pointLabel = markerGroup.append("text")
+            .attr("class", "point-label")
+            .style("opacity", 0);
+
+        // Create a clip path to ensure the line doesn't exceed the plot area
+        plot.append("clipPath")
+            .attr("id", "plot-clip")
+            .append("rect")
+            .attr("width", plotWidth)
+            .attr("height", plotHeight);
+
+        path.attr("clip-path", "url(#plot-clip)");
+
+        // Create zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.5, 50])
+            .translateExtent([[-100, -100], [config.width + 100, config.height + 100]])
+            .extent([[0, 0], [config.width, config.height]])
+            .on("zoom", zoomed);
+
+        // Add transparent rectangle for zoom
+        const zoomRect = svg.append("rect")
+            .attr("width", config.width)
+            .attr("height", config.height)
+            .style("fill", "none")
+            .style("pointer-events", "all")
+            .call(zoom);
+
+        // Function to find closest point on curve to mouse position
+        function findClosestPoint(mouseX) {
+            const xValue = xScale.invert(mouseX);
+            const yValue = calculateY(xValue, config.m);
+            
+            return {
+                x: xValue,
+                y: yValue,
+                screenX: xScale(xValue),
+                screenY: yScale(yValue)
+            };
+        }
+        
+        // Function to show point marker and axis lines
+        function showPointMarker(point) {
+            // Update point marker
+            pointMarker
+                .attr("cx", point.screenX)
+                .attr("cy", point.screenY)
+                .style("opacity", 1);
+                
+            // Update axis lines
+            xAxisLine
+                .attr("x1", point.screenX)
+                .attr("y1", point.screenY)
+                .attr("x2", point.screenX)
+                .attr("y2", plotHeight)
+                .style("opacity", 1);
+                
+            yAxisLine
+                .attr("x1", 0)
+                .attr("y1", point.screenY)
+                .attr("x2", point.screenX)
+                .attr("y2", point.screenY)
+                .style("opacity", 1);
+                
+            // Update point label
+            pointLabel
+                .attr("x", point.screenX + 10)
+                .attr("y", point.screenY - 10)
+                .text(`(${point.x.toFixed(4)}, ${point.y.toFixed(4)})`)
+                .style("opacity", 1);
+        }
+        
+        // Function to hide point marker and axis lines
+        function hidePointMarker() {
+            pointMarker.style("opacity", 0);
+            xAxisLine.style("opacity", 0);
+            yAxisLine.style("opacity", 0);
+            pointLabel.style("opacity", 0);
+        }
+        
+        // Handle click on the plot area
+        zoomRect.on("click", function(event) {
+            const [mouseX, mouseY] = d3.pointer(event);
+            
+            // Check if click is within plot area
+            if (mouseX >= config.margin.left && mouseX <= config.width - config.margin.right &&
+                mouseY >= config.margin.top && mouseY <= config.height - config.margin.bottom) {
+                
+                const relativeX = mouseX - config.margin.left;
+                const closestPoint = findClosestPoint(relativeX);
+                
+                // Check if point is close enough to the curve (optional)
+                const actualY = yScale.invert(mouseY - config.margin.top);
+                const distance = Math.abs(actualY - closestPoint.y);
+                
+                if (distance < 0.1) { // Adjust threshold as needed
+                    showPointMarker(closestPoint);
+                } else {
+                    hidePointMarker();
+                }
+            }
+        });
+
+        function showCoordinates(event) {
+            const [x, y] = d3.pointer(event);
+            if (x >= config.margin.left && x <= config.width - config.margin.right &&
+                y >= config.margin.top && y <= config.height - config.margin.bottom) {
+                
+                const xVal = xScale.invert(x - config.margin.left);
+                const yVal = yScale.invert(y - config.margin.top);
+                const calculatedY = calculateY(xVal, config.m);
+                
+                d3.select("#coordinates").html(
+                    `Cursor: x = ${xVal.toFixed(4)}, y = ${yVal.toFixed(4)}<br>` +
+                    `Function value at x = ${xVal.toFixed(4)}: y = ${calculatedY.toFixed(4)}`
+                );
+            }
+        }
+
+        function hideCoordinates() {
+            d3.select("#coordinates").html("");
+        }
+
+        // Function to update the grid
+        function updateGrid() {
+            if (!config.showGrid) {
+                gridGroup.selectAll("*").remove();
+                return;
+            }
+
+            // X grid lines
+            const xGridLines = gridGroup.selectAll(".x-grid-line")
+                .data(xScale.ticks(10));
+
+            xGridLines.exit().remove();
+
+            xGridLines.enter()
+                .append("line")
+                .attr("class", "x-grid-line")
+                .merge(xGridLines)
+                .attr("x1", d => xScale(d))
+                .attr("x2", d => xScale(d))
+                .attr("y1", 0)
+                .attr("y2", plotHeight)
+                .attr("stroke", "#eee")
+                .attr("stroke-width", 1);
+
+            // Y grid lines
+            const yGridLines = gridGroup.selectAll(".y-grid-line")
+                .data(yScale.ticks(10));
+
+            yGridLines.exit().remove();
+
+            yGridLines.enter()
+                .append("line")
+                .attr("class", "y-grid-line")
+                .merge(yGridLines)
+                .attr("x1", 0)
+                .attr("x2", plotWidth)
+                .attr("y1", d => yScale(d))
+                .attr("y2", d => yScale(d))
+                .attr("stroke", "#eee")
+                .attr("stroke-width", 1);
+        }
+
+        // Function to update the plot
+        function updatePlot() {
+            // Generate data points based on current domain
+            const xDomain = xScale.domain();
+            const data = generateData(xDomain, config.m, config.points);
+            
+            // Update path
+            path.datum(data)
+                .attr("d", line);
+                
+            // Update grid
+            updateGrid();
+        }
+
+        // Function to handle zoom events
+        function zoomed(event) {
+            // Update scales with new zoom transform
+            const newXScale = event.transform.rescaleX(xScale);
+            const newYScale = event.transform.rescaleY(yScale);
+            
+            // Update axes
+            xAxisGroup.call(xAxis.scale(newXScale));
+            yAxisGroup.call(yAxis.scale(newYScale));
+            
+            // Update line with new scales
+            const newLine = d3.line()
+                .x(d => newXScale(d.x))
+                .y(d => newYScale(d.y));
+                
+            // Generate data points based on current domain
+            const data = generateData(newXScale.domain(), config.m, config.points);
+            
+            // Update path
+            path.datum(data)
+                .attr("d", newLine);
+                
+            // Update grid with new scales
+            if (config.showGrid) {
+                // X grid lines
+                gridGroup.selectAll(".x-grid-line")
+                    .attr("x1", d => newXScale(d))
+                    .attr("x2", d => newXScale(d));
+
+                // Y grid lines
+                gridGroup.selectAll(".y-grid-line")
+                    .attr("y1", d => newYScale(d))
+                    .attr("y2", d => newYScale(d));
+            }
+            
+            // Update point markers if they're visible
+            if (pointMarker.style("opacity") > 0) {
+                const cx = parseFloat(pointMarker.attr("cx"));
+                const xValue = xScale.invert(cx);
+                const yValue = calculateY(xValue, config.m);
+                
+                pointMarker
+                    .attr("cx", newXScale(xValue))
+                    .attr("cy", newYScale(yValue));
+                    
+                xAxisLine
+                    .attr("x1", newXScale(xValue))
+                    .attr("y1", newYScale(yValue))
+                    .attr("x2", newXScale(xValue))
+                    .attr("y2", plotHeight);
+                    
+                yAxisLine
+                    .attr("x1", 0)
+                    .attr("y1", newYScale(yValue))
+                    .attr("x2", newXScale(xValue))
+                    .attr("y2", newYScale(yValue));
+                    
+                pointLabel
+                    .attr("x", newXScale(xValue) + 10)
+                    .attr("y", newYScale(yValue) - 10)
+                    .text(`(${xValue.toFixed(4)}, ${yValue.toFixed(4)})`);
+            }
+        }
+
+        // Handle m-slider changes
+        d3.select("#m-slider").on("input", function() {
+            config.m = +this.value;
+            d3.select("#m-value").text(config.m.toFixed(1));
+            d3.select("#m-input").property("value", config.m.toFixed(1));
+            updatePlot();
+            updateMarkers();
+        });
+        
+        // Handle manual input for m value
+        d3.select("#m-input").on("input", function() {
+            const inputValue = +this.value;
+            if (!isNaN(inputValue) && inputValue > 0) {
+                config.m = inputValue;
+                d3.select("#m-value").text(config.m.toFixed(1));
+                // Only update slider if value is within slider range
+                if (inputValue <= 1000) {
+                    d3.select("#m-slider").property("value", 
+                        Math.min(Math.max(config.m, 0.1), 1000));
+                }
+                updatePlot();
+                updateMarkers();
+            }
+        });
+        
+        // Initial plot update
+        updatePlot();
+
+        // Handle reset zoom button
+        d3.select("#reset-zoom").on("click", function() {
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity);
+                
+            xScale.domain(config.initialXDomain);
+            yScale.domain(config.initialYDomain);
+            
+            xAxisGroup.call(xAxis);
+            yAxisGroup.call(yAxis);
+            
+            updatePlot();
+            updateMarkers();
+        });
+
+        // Handle toggle grid button
+        d3.select("#toggle-grid").on("click", function() {
+            config.showGrid = !config.showGrid;
+            updateGrid();
+        });
+
+        // Handle clear markers button
+        d3.select("#clear-markers").on("click", function() {
+            hidePointMarker();
+        });
+
+        // Add info about slider vs input range
+        const rangeInfo = d3.select(".controls")
+            .append("div")
+            .attr("class", "range-info")
+            .style("margin-top", "10px")
+            .style("font-size", "12px")
+            .style("color", "#666")
+            .html("Note: Slider limited to 1000 for usability. For larger values up to 100891344545564193334812497256, use the number input.");
+
+    </script>
+</body>
+</html>
